@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Extractor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+            margin: 20px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            margin: auto;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin-top: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        p {
+            background: #eee;
+            padding: 5px;
+            border-radius: 5px;
+            display: inline-block;
+            min-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bill Details Extractor</h2>
+        <input type="file" id="imageInput" accept="image/*">
+        <button onclick="extractBillDetails()">Extract Bill Info</button>
+        <p id="loading" style="display:none;">Processing...</p>
+
+        <h3>Extracted Details:</h3>
+        <p><strong>Bill Type:</strong> <span id="billType"></span></p>
+        <p><strong>Date:</strong> <span id="billDate"></span></p>
+        <p><strong>Highest Amount:</strong> <span id="grandTotal"></span></p>
+    </div>
+
+    <script>
+        async function extractBillDetails() {
+            const fileInput = document.getElementById("imageInput");
+            const billTypeElement = document.getElementById("billType");
+            const dateElement = document.getElementById("billDate");
+            const totalElement = document.getElementById("grandTotal");
+            const loading = document.getElementById("loading");
+
+            if (!fileInput.files.length) {
+                alert("Please select an image first.");
+                return;
+            }
+
+            let formData = new FormData();
+            formData.append("apikey", "K87109129488957"); // Your OCR API Key
+            formData.append("language", "eng");
+            formData.append("isOverlayRequired", "false");
+            formData.append("file", fileInput.files[0]);
+
+            billTypeElement.textContent = "";
+            dateElement.textContent = "";
+            totalElement.textContent = "";
+            loading.style.display = "block";
+
+            try {
+                let response = await fetch("https://api.ocr.space/parse/image", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                let data = await response.json();
+                loading.style.display = "none";
+
+                if (data.ParsedResults && data.ParsedResults[0]) {
+                    let extractedText = data.ParsedResults[0].ParsedText || "";
+
+                    let lines = extractedText.split("\n").map(line => line.trim()).filter(line => line);
+
+                    let billType = extractBillType(lines);
+                    let billDate = extractDate(lines) || getTodayDate(); // Use today's date if no date is found
+                    let grandTotal = extractGrandTotal(lines);
+
+                    billTypeElement.textContent = billType || "Not Found";
+                    dateElement.textContent = billDate;
+                    totalElement.textContent = grandTotal || "Not Found";
+                } else {
+                    billTypeElement.textContent = "Error extracting text.";
+                    dateElement.textContent = getTodayDate(); // Set today's date if error
+                    totalElement.textContent = "Error extracting text.";
+                }
+            } catch (error) {
+                loading.style.display = "none";
+                billTypeElement.textContent = "Error: " + error.message;
+                dateElement.textContent = getTodayDate(); // Set today's date on error
+            }
+        }
+
+        // Extract Bill Type (First significant line, assumed to be store name or title)
+        function extractBillType(lines) {
+            return lines.length > 0 ? lines[0] : "Unknown Bill";
+        }
+
+        // Extract Date from text (Detects different formats)
+        function extractDate(lines) {
+            let datePattern = /\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{4}[-\/]\d{1,2}[-\/]\d{1,2})\b/;
+            for (let line of lines) {
+                let match = line.match(datePattern);
+                if (match) return match[0];
+            }
+            return null;
+        }
+
+        // Get today's date in YYYY-MM-DD format
+        function getTodayDate() {
+            let today = new Date();
+            let yyyy = today.getFullYear();
+            let mm = String(today.getMonth() + 1).padStart(2, '0'); // Month (01-12)
+            let dd = String(today.getDate()).padStart(2, '0'); // Day (01-31)
+            return ${yyyy}-${mm}-${dd};
+        }
+
+        // Extract the highest amount from the bill
+        function extractGrandTotal(lines) {
+            let amountPattern = /₹?\s*([\d,]+(?:\.\d{1,2})?)/g; // Matches numbers with commas and decimals
+            let highestAmount = 0;
+
+            for (let line of lines) {
+                console.log("Checking Line:", line); // Debugging log
+                let matches = [...line.matchAll(amountPattern)]; // Find all matching amounts
+
+                for (let match of matches) {
+                    let amountStr = match[1].replace(/,/g, ""); // Remove commas
+                    let amount = parseFloat(amountStr);
+
+                    if (!isNaN(amount) && amount > highestAmount) {
+                        highestAmount = amount;
+                    }
+                }
+            }
+
+            return highestAmount > 0 ? ₹${highestAmount.toFixed(2)} : "Not Found";
+        }
+    </script>
+</body>
+</html>
